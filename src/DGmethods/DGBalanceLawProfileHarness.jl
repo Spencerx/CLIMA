@@ -1,7 +1,7 @@
+using GPUifyLoops
 include("DGBalanceLawDiscretizations_kernels.jl")
 using Random
 using StaticArrays
-using GPUifyLoops
 
 # From src/Mesh/Grids.jl
 """
@@ -170,7 +170,7 @@ function DGProfiler(ArrayType, DFloat, dim, nelem, N, nstate, flux!,
    viscous_boundary_penalty! = viscous_boundary_penalty!,
    viscous_penalty!          = viscous_penalty!,
    viscous_transform!        = viscous_transform!,
-   device                    = ArrayType == Array ? CPU() : GPU())
+   device                    = ArrayType == Array ? CPU() : CUDA())
 end
 
 function volumerhs!(dg)
@@ -178,10 +178,11 @@ function volumerhs!(dg)
   Nqk = dg.dim == 2 ? 1 : Nq
   DEV = dg.device
   nelem = length(dg.elems)
+
   @launch(DEV, threads=(Nq, Nq, Nqk), blocks=nelem,
           volumerhs!(Val(dg.dim), Val(dg.N), Val(dg.nstate), Val(dg.nviscstate),
-                     Val(dg.nauxstate), dg.flux!, dg.source!, dg.rhs, dg.Q,
-                     dg.Qvisc, dg.auxstate, dg.vgeo, dg.t, dg.D, dg.elems))
+                     Val(dg.nauxstate), dg.flux!, dg.source!, rhs, Q,
+                     Qvisc, auxstate, vgeo, dg.t, dg.D, dg.elems))
 end
 
 facerhs!(dg) = facerhs!(Val(dg.dim), Val(dg.N), Val(dg.nstate),

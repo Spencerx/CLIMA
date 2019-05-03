@@ -46,16 +46,16 @@ uuid = "3895d2a7-ec45-59b8-82bb-cfc6a382f9b3"
 version = "0.6.3"
 
 [[CUDAdrv]]
-deps = ["CUDAapi", "Libdl", "Printf", "Test"]
-git-tree-sha1 = "3014fc9bab66af6646e476f86ff1f86f019fb869"
+deps = ["CUDAapi", "Libdl", "Printf"]
+git-tree-sha1 = "ac4ff4daf5d5c031ad52ae2b360a99dbd2a423ce"
 uuid = "c5f51814-7f29-56b8-a69c-e4d8f6be1fde"
-version = "2.0.0"
+version = "3.0.0"
 
 [[CUDAnative]]
-deps = ["Adapt", "CUDAapi", "CUDAdrv", "DataStructures", "InteractiveUtils", "LLVM", "Libdl", "Pkg", "Printf", "Statistics", "Test", "TimerOutputs"]
-git-tree-sha1 = "8b6767565310391bbdbcafbfc98dbef9eced6333"
+deps = ["Adapt", "CUDAapi", "CUDAdrv", "DataStructures", "InteractiveUtils", "LLVM", "Libdl", "Logging", "Pkg", "Printf", "TimerOutputs"]
+git-tree-sha1 = "b4f7ba69cece0a9dcfcbfc944ef33fe464256399"
 uuid = "be33ccc6-a3ff-5ff2-a52e-74243cff1e17"
-version = "2.0.1"
+version = "2.1.0"
 
 [[Canary]]
 deps = ["MPI"]
@@ -108,10 +108,10 @@ uuid = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
 version = "4.0.0"
 
 [[CuArrays]]
-deps = ["AbstractFFTs", "Adapt", "CUDAapi", "CUDAdrv", "CUDAnative", "DiffRules", "ForwardDiff", "GPUArrays", "LinearAlgebra", "MacroTools", "NNlib", "Pkg", "Printf", "Random", "SparseArrays", "Test", "TimerOutputs"]
-git-tree-sha1 = "34f30ae1a027b0b2e01694bb1b91003d7a9d5fc5"
+deps = ["AbstractFFTs", "Adapt", "CUDAapi", "CUDAdrv", "CUDAnative", "GPUArrays", "LinearAlgebra", "MacroTools", "NNlib", "Printf", "Random", "Requires", "SparseArrays", "TimerOutputs"]
+git-tree-sha1 = "f95cbe4fe78b1fff00691aa1d2e533542f095358"
 uuid = "3a865a2d-5b23-5a0f-bc46-62713ec82fae"
-version = "1.0.1"
+version = "1.0.2"
 
 [[DataStructures]]
 deps = ["InteractiveUtils", "OrderedCollections", "Random", "Serialization", "Test"]
@@ -169,9 +169,9 @@ version = "0.2.4"
 
 [[FillArrays]]
 deps = ["LinearAlgebra", "Random", "SparseArrays", "Test"]
-git-tree-sha1 = "2def0123a4f3572234405b0e3d80bfe5d3e1a2a4"
+git-tree-sha1 = "4c9269860074f5e9cf3f9078c49228bf13e4b33b"
 uuid = "1a297f60-69ca-5386-bcde-b61e274b549b"
-version = "0.5.0"
+version = "0.6.1"
 
 [[ForwardDiff]]
 deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "InteractiveUtils", "LinearAlgebra", "NaNMath", "Random", "SparseArrays", "SpecialFunctions", "StaticArrays", "Test"]
@@ -181,9 +181,9 @@ version = "0.10.3"
 
 [[GPUArrays]]
 deps = ["Adapt", "FFTW", "FillArrays", "LinearAlgebra", "Printf", "Random", "Serialization", "StaticArrays", "Test"]
-git-tree-sha1 = "2b96d7f25fbea82c08a736d78cbf14df8d2100a5"
+git-tree-sha1 = "83abe5537d6f35f558cef7af309a428d055394db"
 uuid = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
-version = "0.6.1"
+version = "0.7.0"
 
 [[GPUifyLoops]]
 deps = ["Cassette", "Pkg", "Requires", "StaticArrays", "Test"]
@@ -276,10 +276,10 @@ version = "0.6.8"
 uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 
 [[NNlib]]
-deps = ["Libdl", "LinearAlgebra", "MacroTools", "Requires", "Test"]
-git-tree-sha1 = "9ac5cd21484189339b27840818c4882d1b6df7fd"
+deps = ["Libdl", "LinearAlgebra", "Requires", "Statistics", "TimerOutputs"]
+git-tree-sha1 = "0c667371391fc6bb31f7f12f96a56a17098b3de8"
 uuid = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
-version = "0.5.0"
+version = "0.6.0"
 
 [[NaNMath]]
 deps = ["Compat"]

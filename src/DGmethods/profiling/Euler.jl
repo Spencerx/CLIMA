@@ -1,3 +1,5 @@
+using CUDAnative
+using CuArrays
 try
   isdefined(NumericalFluxes, :rusanov!)
 catch
@@ -46,14 +48,15 @@ end
 numerical_flux!(x...) = NumericalFluxes.rusanov!(x..., eulerflux!, wavespeed,
                                                  preflux)
 
+
 let
   DFloat = Float64
   dim = 2
   nelem = 100
   N = 4
-  dg = DGProfiler(Array, DFloat, dim, nelem, N, _nstate, eulerflux!,
+  dg = DGProfiler(CuArray, DFloat, dim, nelem, N, _nstate, eulerflux!,
                   numerical_flux!; stateoffset = ((_E, 20), (_ρ, 1)))
-  runall!(dg)
-  @time runall!(dg)
+  volumerhs!(dg)
+  @time volumerhs!(dg)
   nothing
 end

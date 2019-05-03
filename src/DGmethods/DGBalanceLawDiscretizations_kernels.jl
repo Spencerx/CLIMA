@@ -21,8 +21,7 @@ function volumerhs!(::Val{dim}, ::Val{N},
                     ::Val{nstate}, ::Val{nviscstate},
                     ::Val{nauxstate},
                     flux!, source!,
-                    rhs::Array,
-                    Q, Qvisc, auxstate, vgeo, t,
+                    rhs, Q, Qvisc, auxstate, vgeo, t,
                     D, elems) where {dim, N, nstate, nviscstate,
                                      nauxstate}
   DFloat = eltype(Q)
@@ -33,12 +32,6 @@ function volumerhs!(::Val{dim}, ::Val{N},
 
   nelem = size(Q)[end]
 
-  Q = reshape(Q, Nq, Nq, Nqk, nstate, nelem)
-  Qvisc = reshape(Qvisc, Nq, Nq, Nqk, nviscstate, nelem)
-  rhs = reshape(rhs, Nq, Nq, Nqk, nstate, nelem)
-  vgeo = reshape(vgeo, Nq, Nq, Nqk, _nvgeo, nelem)
-  auxstate = reshape(auxstate, Nq, Nq, Nqk, nauxstate, nelem)
-
   s_F = @shmem DFloat (3, Nq, Nq, Nqk, nstate)
   l_rhs = @scratch DFloat (nstate, Nq, Nq, Nqk) 3
 
@@ -48,30 +41,32 @@ function volumerhs!(::Val{dim}, ::Val{N},
   l_aux = MArray{Tuple{nauxstate}, DFloat}(undef)
   l_F = MArray{Tuple{3, nstate}, DFloat}(undef)
 
+  #=
   @inbounds @loop for e in (elems; blockIdx().x)
     @loop for k in (1:Nqk; threadIdx().z)
       @loop for j in (1:Nq; threadIdx().y)
         @loop for i in (1:Nq; threadIdx().x)
-          MJ = vgeo[i, j, k, _MJ, e]
+          ijk = i + Nq * ((j-1) + Nqk * (k-1))
+          MJ = vgeo[i + j, k, _MJ, e]
           # MJI = vgeo[i, j, k, _MJI, e]
           ξx, ξy, ξz = vgeo[i,j,k,_ξx,e], vgeo[i,j,k,_ξy,e], vgeo[i,j,k,_ξz,e]
           ηx, ηy, ηz = vgeo[i,j,k,_ηx,e], vgeo[i,j,k,_ηy,e], vgeo[i,j,k,_ηz,e]
           ζx, ζy, ζz = vgeo[i,j,k,_ζx,e], vgeo[i,j,k,_ζy,e], vgeo[i,j,k,_ζz,e]
 
           for s = 1:nstate
-            l_rhs[s, i, j, k] = rhs[i, j, k, s, e]
+            l_rhs[s, i, j, k] = rhs[ijk, s, e]
           end
 
           for s = 1:nstate
-            l_Q[s] = Q[i, j, k, s, e]
+            l_Q[s] = Q[ijk, s, e]
           end
 
           for s = 1:nviscstate
-            l_Qvisc[s] = Qvisc[i, j, k, s, e]
+            l_Qvisc[s] = Qvisc[ijk, s, e]
           end
 
           for s = 1:nauxstate
-            l_aux[s] = auxstate[i, j, k, s, e]
+            l_aux[s] = auxstate[ijk, s, e]
           end
 
           flux!(l_F, l_Q, l_Qvisc, l_aux, t)
@@ -95,7 +90,8 @@ function volumerhs!(::Val{dim}, ::Val{N},
     @synchronize
 
     for s = 1:nstate, k = 1:Nqk, j = 1:Nq, i = 1:Nq
-      MJI = vgeo[i, j, k, _MJI, e]
+    ijk = i + Nq * ((j-1) + Nqk * (k-1))
+      MJI = vgeo[ijk, _MJI, e]
       for n = 1:Nq
         # ξ-grid lines
         l_rhs[s, i, j, k] += MJI * D[n, i] * s_F[1, n, j, k, s]
@@ -108,10 +104,13 @@ function volumerhs!(::Val{dim}, ::Val{N},
       end
     end
     for s = 1:nstate, k = 1:Nqk, j = 1:Nq, i = 1:Nq
-      rhs[i, j, k, s, e] = l_rhs[s, i, j, k]
+    ijk = i + Nq * ((j-1) + Nqk * (k-1))
+      rhs[ijk, s, e] = l_rhs[s, i, j, k]
     end
     @synchronize
   end
+  =#
+  nothing
 end
 
 """
