@@ -1,6 +1,8 @@
 include("DGBalanceLawDiscretizations_kernels.jl")
 using Random
 using StaticArrays
+using GPUifyLoops
+
 # From src/Mesh/Grids.jl
 """
     mappings(N, elemtoelem, elemtoface, elemtoordr)
@@ -56,7 +58,8 @@ function mappings(N, elemtoelem, elemtoface, elemtoordr)
   (vmapM, vmapP)
 end
 
-function DGProfiler(DFloat, dim, nelem, N, nstate, flux!, numerical_flux!;
+function DGProfiler(ArrayType, DFloat, dim, nelem, N, nstate, flux!,
+                    numerical_flux!;
                     nauxstate = 0, source! = nothing,
                     numerical_boundary_flux! = nothing,
                     nviscstate = 0,
@@ -140,14 +143,19 @@ function DGProfiler(DFloat, dim, nelem, N, nstate, flux!, numerical_flux!;
   vgeo[:, _MJ, :] .+= 3
   vgeo[:, _MJI, :] .= 1 ./ vgeo[:, _MJ, :]
 
-  (D                         = D,
+  (D                         = ArrayType(D),
+   Q                         = ArrayType(Q),
+   Qvisc                     = ArrayType(Qvisc),
+   auxstate                  = ArrayType(auxstate),
+   elemtobndy                = ArrayType(elemtobndy),
+   rhs                       = ArrayType(rhs),
+   sgeo                      = ArrayType(sgeo),
+   vgeo                      = ArrayType(vgeo),
+   vmapM                     = ArrayType(vmapM),
+   vmapP                     = ArrayType(vmapP),
    N                         = N,
-   Q                         = Q,
-   Qvisc                     = Qvisc,
-   auxstate                  = auxstate,
    dim                       = dim,
    elems                     = 1:nelem,
-   elemtobndy                = elemtobndy,
    flux!                     = flux!,
    gradient_transform!       = gradient_transform!,
    nauxstate                 = nauxstate,
@@ -157,22 +165,24 @@ function DGProfiler(DFloat, dim, nelem, N, nstate, flux!, numerical_flux!;
    numerical_flux!           = numerical_flux!,
    nviscstate                = nviscstate,
    source!                   = source!,
-   rhs                       = rhs,
-   sgeo                      = sgeo,
    states_grad               = states_grad,
    t                         = t,
-   vgeo                      = vgeo,
    viscous_boundary_penalty! = viscous_boundary_penalty!,
    viscous_penalty!          = viscous_penalty!,
    viscous_transform!        = viscous_transform!,
-   vmapM                     = vmapM,
-   vmapP                     = vmapP)
+   device                    = ArrayType == Array ? CPU() : GPU())
 end
 
-volumerhs!(dg) = volumerhs!(Val(dg.dim), Val(dg.N), Val(dg.nstate),
-                            Val(dg.nviscstate), Val(dg.nauxstate), dg.flux!,
-                            dg.source!, dg.rhs, dg.Q, dg.Qvisc, dg.auxstate,
-                            dg.vgeo, dg.t, dg.D, dg.elems)
+function volumerhs!(dg)
+  Nq = dg.N+1
+  Nqk = dg.dim == 2 ? 1 : Nq
+  DEV = dg.device
+  nelem = length(dg.elems)
+  @launch(DEV, threads=(Nq, Nq, Nqk), blocks=nelem,
+          volumerhs!(Val(dg.dim), Val(dg.N), Val(dg.nstate), Val(dg.nviscstate),
+                     Val(dg.nauxstate), dg.flux!, dg.source!, dg.rhs, dg.Q,
+                     dg.Qvisc, dg.auxstate, dg.vgeo, dg.t, dg.D, dg.elems))
+end
 
 facerhs!(dg) = facerhs!(Val(dg.dim), Val(dg.N), Val(dg.nstate),
                         Val(dg.nviscstate), Val(dg.nauxstate),

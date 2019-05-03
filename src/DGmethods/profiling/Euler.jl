@@ -43,15 +43,16 @@ eulerflux!(F, Q, QV, aux, t, preflux(Q)...)
   end
 end
 
-numerical_flux!(x...) = NumericalFluxes.rusanov!(x..., eulerflux!, wavespeed, preflux)
+numerical_flux!(x...) = NumericalFluxes.rusanov!(x..., eulerflux!, wavespeed,
+                                                 preflux)
 
 let
   DFloat = Float64
   dim = 2
   nelem = 100
   N = 4
-  dg = DGProfiler(DFloat, dim, nelem, N, _nstate, eulerflux!, numerical_flux!;
-                  stateoffset = ((_E, 20), (_ρ, 1)))
+  dg = DGProfiler(Array, DFloat, dim, nelem, N, _nstate, eulerflux!,
+                  numerical_flux!; stateoffset = ((_E, 20), (_ρ, 1)))
   runall!(dg)
   @time runall!(dg)
   nothing

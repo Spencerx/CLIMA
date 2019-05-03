@@ -70,6 +70,7 @@ using StaticArrays
 using ...SpaceMethods
 using DocStringExtensions
 using ...Topologies
+using GPUifyLoops
 
 export DGBalanceLaw
 
