@@ -1,36 +1,78 @@
 include("DGBalanceLawDiscretizations_kernels.jl")
 using Random
-using CLIMA.Grids
 using StaticArrays
-let
-  DFloat = Float64
+# From src/Mesh/Grids.jl
+"""
+    mappings(N, elemtoelem, elemtoface, elemtoordr)
 
-  nelem = 4
-  dim = 2
-  N = 4
+This function takes in a polynomial order `N` and parts of a topology (as
+returned from `connectmesh`) and returns index mappings for the element surface
+flux computation.  The returned `Tuple` contains:
 
-  nstate = 5
-  nauxstate = 2
+ - `vmapM` an array of linear indices into the volume degrees of freedom where
+   `vmapM[:,f,e]` are the degrees of freedom indices for face `f` of element
+    `e`.
 
-  flux! = (x...) -> nothing
-  numerical_flux! = (x...) -> nothing
-  source! = nothing
-  numerical_boundary_flux! = nothing
+ - `vmapP` an array of linear indices into the volume degrees of freedom where
+   `vmapP[:,f,e]` are the degrees of freedom indices for the face neighboring
+   face `f` of element `e`.
+"""
+function mappings(N, elemtoelem, elemtoface, elemtoordr)
+  nface, nelem = size(elemtoelem)
 
-  nviscstate = 6
-  ngradstate = 3
-  states_grad = Tuple(1:4)
-  viscous_transform! = (x...) -> nothing
-  gradient_transform! = (x...) -> nothing
-  viscous_penalty! = (x...) -> nothing
-  viscous_boundary_penalty! = nothing
+  d = div(nface, 2)
+  Np, Nfp = (N+1)^d, (N+1)^(d-1)
 
-  t = zero(DFloat)
+  p = reshape(1:Np, ntuple(j->N+1, d))
+  fd(f) =   div(f-1,2)+1
+  fe(f) = N*mod(f-1,2)+1
+  fmask = hcat((p[ntuple(j->(j==fd(f)) ? (fe(f):fe(f)) : (:), d)...][:]
+                for f=1:nface)...)
+  inds = LinearIndices(ntuple(j->N+1, d-1))
+
+  vmapM = similar(elemtoelem, Nfp, nface, nelem)
+  vmapP = similar(elemtoelem, Nfp, nface, nelem)
+
+  for e1 = 1:nelem, f1 = 1:nface
+    e2 = elemtoelem[f1,e1]
+    f2 = elemtoface[f1,e1]
+    o2 = elemtoordr[f1,e1]
+
+    vmapM[:,f1,e1] .= Np*(e1-1) .+ fmask[:,f1]
+
+    if o2 == 1
+      vmapP[:,f1,e1] .= Np*(e2-1) .+ fmask[:,f2]
+    elseif d == 3 && o2 == 3
+      n = 1
+      @inbounds for j = 1:N+1, i = N+1:-1:1
+        vmapP[n,f1,e1] = Np*(e2-1) + fmask[inds[i,j],f2]
+        n+=1
+      end
+    else
+      error("Orientation '$o2' with dim '$d' not supported yet")
+    end
+  end
+
+  (vmapM, vmapP)
+end
+
+function DGProfiler(DFloat, dim, nelem, N, nstate, flux!, numerical_flux!;
+                    nauxstate = 0, source! = nothing,
+                    numerical_boundary_flux! = nothing,
+                    nviscstate = 0,
+                    ngradstate = 0,
+                    states_grad = (),
+                    viscous_transform! = nothing,
+                    gradient_transform! = nothing,
+                    viscous_penalty! = nothing,
+                    viscous_boundary_penalty! = nothing,
+                    t = zero(DFloat),
+                    rnd = MersenneTwister(0),
+                    numerical_boundary_faces = 0,
+                    stateoffset = ())
 
   # Generate a random mapping
   nface = 2dim
-  rnd = MersenneTwister(0)
-  probability_boundary_face = 0.01
 
   elemtoelem = zeros(Int, nface, nelem)
   elemtobndy = zeros(Int, nface, nelem)
@@ -38,6 +80,22 @@ let
   elemtoordr = ones(Int, nface, nelem)
 
   Faces = Set(1:nelem*nface)
+
+  for b = 1:numerical_boundary_faces
+    gf = rand(Faces)
+    pop!(Faces, gf)
+    e = div(gf-1, nface) + 1
+    f = ((gf-1) % nface) + 1
+
+    @assert elemtoelem[f, e] == 0
+    @assert elemtoface[f, e] == 0
+    @assert elemtobndy[f, e] == 0
+
+    elemtoelem[f, e] = e
+    elemtoface[f, e] = f
+    elemtobndy[f, e] = 1
+  end
+
   for gf1 in Faces
     pop!(Faces, gf1)
     e1 = div(gf1-1, nface) + 1
@@ -46,63 +104,104 @@ let
     @assert elemtoelem[f1, e1] == 0
     @assert elemtoface[f1, e1] == 0
     @assert elemtobndy[f1, e1] == 0
-    if isempty(Faces) || probability_boundary_face > rand(rnd)
-      elemtoelem[f1, e1] = e1
-      elemtoface[f1, e1] = f1
-      elemtobndy[f1, e1] = 1
-    else
-      gf2 = rand(rnd, Faces)
-      pop!(Faces, gf2)
-      e2 = div(gf2-1, nface) + 1
-      f2 = ((gf2-1) % nface) + 1
-      @assert elemtoelem[f2, e2] == 0
-      @assert elemtoface[f2, e2] == 0
-      @assert elemtobndy[f2, e2] == 0
-      elemtoelem[f1, e1], elemtoelem[f2, e2] = e2, e1
-      elemtoface[f1, e1], elemtoface[f2, e2] = f2, f1
-    end
+
+    gf2 = rand(rnd, Faces)
+    pop!(Faces, gf2)
+    e2 = div(gf2-1, nface) + 1
+    f2 = ((gf2-1) % nface) + 1
+
+    @assert elemtoelem[f2, e2] == 0
+    @assert elemtoface[f2, e2] == 0
+    @assert elemtobndy[f2, e2] == 0
+
+    elemtoelem[f1, e1], elemtoelem[f2, e2] = e2, e1
+    elemtoface[f1, e1], elemtoface[f2, e2] = f2, f1
   end
-  vmapM, vmapP = Grids.mappings(N, elemtoelem, elemtoface, elemtoordr)
+  vmapM, vmapP = mappings(N, elemtoelem, elemtoface, elemtoordr)
 
   # Generate random geometry terms and solutions
   Nq = N + 1
   Nqk = dim == 3 ? N + 1 : 1
-  Q = rand(rnd, DFloat, Nq, Nq, Nqk, nstate, nelem)
-  Qvisc = rand(rnd, DFloat, Nq, Nq, Nqk, nviscstate, nelem)
-  auxstate = rand(rnd, DFloat, Nq, Nq, Nqk, nauxstate, nelem)
-  vgeo = rand(rnd, DFloat, Nq, Nq, Nqk, _nvgeo, nelem)
+  Np = Nq * Nq * Nqk
+  Q = rand(rnd, DFloat, Np, nstate, nelem)
+  for (s, offset) in stateoffset
+    @show (s, offset)
+    Q[:, s, :] .+= offset
+  end
+  Qvisc = rand(rnd, DFloat, Np, nviscstate, nelem)
+  auxstate = rand(rnd, DFloat, Np, nauxstate, nelem)
+  vgeo = rand(rnd, DFloat, Np, _nvgeo, nelem)
   sgeo = rand(rnd, DFloat, _nsgeo, Nq^(dim-1), nface, nelem)
   rhs = similar(Q)
   D = rand(rnd, DFloat, Nq, Nq)
 
 
   # Make sure the entries of the mass matrix satisfy the inverse relation
-  vgeo[:, :, :, _MJ, :] .+= 3
-  vgeo[:, :, :, _MJI, :] .= 1 ./ vgeo[:, :, :, _MJ, :]
+  vgeo[:, _MJ, :] .+= 3
+  vgeo[:, _MJI, :] .= 1 ./ vgeo[:, _MJ, :]
 
-  # FIXME: Do we need to correct the surface terms in any way?
+  (D                         = D,
+   N                         = N,
+   Q                         = Q,
+   Qvisc                     = Qvisc,
+   auxstate                  = auxstate,
+   dim                       = dim,
+   elems                     = 1:nelem,
+   elemtobndy                = elemtobndy,
+   flux!                     = flux!,
+   gradient_transform!       = gradient_transform!,
+   nauxstate                 = nauxstate,
+   ngradstate                = ngradstate,
+   nstate                    = nstate,
+   numerical_boundary_flux!  = numerical_boundary_flux!,
+   numerical_flux!           = numerical_flux!,
+   nviscstate                = nviscstate,
+   source!                   = source!,
+   rhs                       = rhs,
+   sgeo                      = sgeo,
+   states_grad               = states_grad,
+   t                         = t,
+   vgeo                      = vgeo,
+   viscous_boundary_penalty! = viscous_boundary_penalty!,
+   viscous_penalty!          = viscous_penalty!,
+   viscous_transform!        = viscous_transform!,
+   vmapM                     = vmapM,
+   vmapP                     = vmapP)
+end
 
-  # Call the volume kernel
-  volumerhs!(Val(dim), Val(N), Val(nstate), Val(nviscstate),
-             Val(nauxstate), flux!, source!, rhs, Q, Qvisc, auxstate, vgeo, t,
-             D, 1:nelem)
+volumerhs!(dg) = volumerhs!(Val(dg.dim), Val(dg.N), Val(dg.nstate),
+                            Val(dg.nviscstate), Val(dg.nauxstate), dg.flux!,
+                            dg.source!, dg.rhs, dg.Q, dg.Qvisc, dg.auxstate,
+                            dg.vgeo, dg.t, dg.D, dg.elems)
 
-  # Call the volume kernel
-  facerhs!(Val(dim), Val(N), Val(nstate), Val(nviscstate), Val(nauxstate),
-           numerical_flux!, numerical_boundary_flux!, rhs, Q, Qvisc, auxstate,
-           vgeo, sgeo, t, vmapM, vmapP, elemtobndy, 1:nelem)
+facerhs!(dg) = facerhs!(Val(dg.dim), Val(dg.N), Val(dg.nstate),
+                        Val(dg.nviscstate), Val(dg.nauxstate),
+                        dg.numerical_flux!, dg.numerical_boundary_flux!, dg.rhs,
+                        dg.Q, dg.Qvisc, dg.auxstate, dg.vgeo, dg.sgeo, dg.t,
+                        dg.vmapM, dg.vmapP, dg.elemtobndy, dg.elems)
 
-  if nviscstate > 0
-    volumeviscterms!(Val(dim), Val(N), Val(nstate), Val(states_grad),
-                     Val(ngradstate), Val(nviscstate), Val(nauxstate),
-                     viscous_transform!, gradient_transform!, Q, Qvisc,
-                     auxstate, vgeo, t, D, 1:nelem)
+volumeviscterms!(dg) = volumeviscterms!(Val(dg.dim), Val(dg.N), Val(dg.nstate),
+                                        Val(dg.states_grad), Val(dg.ngradstate),
+                                        Val(dg.nviscstate), Val(dg.nauxstate),
+                                        dg.viscous_transform!,
+                                        dg.gradient_transform!, dg.Q, dg.Qvisc,
+                                        dg.auxstate, dg.vgeo, dg.t, dg.D,
+                                        dg.elems)
 
-    faceviscterms!(Val(dim), Val(N), Val(nstate), Val(states_grad),
-                   Val(ngradstate), Val(nviscstate), Val(nauxstate),
-                   viscous_penalty!, viscous_boundary_penalty!,
-                   gradient_transform!, Q, Qvisc, auxstate, vgeo, sgeo, t,
-                   vmapM, vmapP, elemtobndy, 1:nelem)
+faceviscterms!(dg) = faceviscterms!(Val(dg.dim), Val(dg.N), Val(dg.nstate),
+                                    Val(dg.states_grad), Val(dg.ngradstate),
+                                    Val(dg.nviscstate), Val(dg.nauxstate),
+                                    dg.viscous_penalty!,
+                                    dg.viscous_boundary_penalty!,
+                                    dg.gradient_transform!, dg.Q, dg.Qvisc,
+                                    dg.auxstate, dg.vgeo, dg.sgeo, dg.t,
+                                    dg.vmapM, dg.vmapP, dg.elemtobndy, dg.elems)
+
+function runall!(dg)
+  volumerhs!(dg)
+  facerhs!(dg)
+  if dg.nviscstate > 0
+    volumeviscterms!(dg)
+    faceviscterms!(dg)
   end
-
 end
